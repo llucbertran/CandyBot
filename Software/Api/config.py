@@ -16,15 +16,6 @@ def _get_int(name: str, default: int) -> int:
     except ValueError:
         return default
 
-def _get_float(name: str, default: float) -> float:
-    raw = os.getenv(name)
-    if raw is None or raw == "":
-        return default
-    try:
-        return float(raw)
-    except ValueError:
-        return default
-
 @dataclass(frozen=True)
 class Settings:
     google_stt_language: str
@@ -41,12 +32,12 @@ def get_settings() -> Settings:
     prompt_path = Path(PROMPT_PATH)
 
     return Settings(
-        google_stt_language=os.getenv("GOOGLE_STT_LANGUAGE", "ca-ES"),
+        google_stt_language="ca-ES",
         gcp_project=os.getenv("GCP_PROJECT", ""),
         gcp_location=os.getenv("GCP_LOCATION", "europe-west1"),
-        stt_timeout_seconds=_get_float("STT_TIMEOUT_SECONDS", 15.0),
+        stt_timeout_seconds=15.0,
         llm_model="gemini-2.5-flash",
-        llm_timeout_seconds=_get_float("LLM_TIMEOUT_SECONDS", 20.0),
+        llm_timeout_seconds=20.0,
         max_audio_bytes=_get_int("MAX_AUDIO_BYTES", 5 * 1024 * 1024),
         prompt_path=prompt_path,
         api_token=os.getenv("API_TOKEN", ""),
