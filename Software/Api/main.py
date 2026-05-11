@@ -28,6 +28,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="CandyBot API", lifespan=lifespan)
 
+@app.get("/")
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "service": "CandyBot API"}
+
 api_key_header = APIKeyHeader(name="X-API-Token", auto_error=True)
 
 def verify_token(api_key_header: str = Security(api_key_header)):
