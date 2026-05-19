@@ -60,9 +60,6 @@ async def _process_audio(audio: UploadFile) -> str:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Speech-to-text failed.") from exc
 
     transcript = transcript.strip()
-    if not transcript:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Transcript was empty.")
-        
     logger.info(f"[TIMING] Speech-to-Text completado en {stt_duration:.2f}s")
     return transcript
 
@@ -70,6 +67,11 @@ async def _process_audio(audio: UploadFile) -> str:
 async def command_from_audio(audio: UploadFile = File(...)) -> CandyBotResponse:
     start_total = time.perf_counter()
     transcript = await _process_audio(audio)
+
+    if not transcript:
+        logger.info("[INFO] Transcript buit, retornant nothing sense cridar el LLM")
+        return CandyBotResponse(action="nothing", confidence=0.0, items=[])
+
     logger.info(f"[INFO] Transcript: {transcript}")
 
     try:

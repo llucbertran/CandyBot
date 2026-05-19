@@ -419,3 +419,4 @@ FodyWeavers.xsd
 
 # Poetry virtual environment
 poetry.lock
+settings.local.json
