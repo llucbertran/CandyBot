@@ -1,7 +1,7 @@
 from __future__ import annotations
 import vertexai
 from vertexai.generative_models import GenerativeModel
-from config import Settings
+from Software.Api.config import Settings
 
 _MODEL_INSTANCE = None
 

@@ -1,8 +1,9 @@
 from __future__ import annotations
 from google.cloud.speech_v2 import SpeechClient
 from google.cloud.speech_v2.types import cloud_speech
-from config import Settings, get_settings
-from utils.audio_utils import ensure_mono_wav
+from Software.Api.config import Settings, get_settings
+
+from Software.Api.utils.audio_utils import ensure_mono_wav
 
 WAV_CONTENT_TYPE = "audio/wav"
 _SPEECH_CLIENT = None

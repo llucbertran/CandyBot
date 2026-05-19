@@ -1,6 +1,6 @@
 from __future__ import annotations
 import json
-from models import CandyBotResponse
+from Software.Api.models import CandyBotResponse
 
 def parse_llm_response(raw_text: str) -> CandyBotResponse:
     if not raw_text:
