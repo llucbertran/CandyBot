@@ -1,7 +1,4 @@
-from Software.Api.services.api_client import record_and_send
-# Software/controllers/candy_controller.py
-
-from Software.Api.services.speech_to_text import *
+from Software.services.api_client import record_and_send
 from Software.models.candy_stock import (
     check_availability,
     consume_from_command,
