@@ -5,6 +5,9 @@ import subprocess
 import os
 import json
 
+from RPLCD.i2c import CharLCD
+from time import sleep
+
 load_dotenv()
 
 # ==========================================================
@@ -88,6 +91,20 @@ def main():
         print(f"device: {ALSA_DEVICE}")
         print(f"seconds: {RECORD_SECONDS}")
         print(json.dumps(result, indent=2, ensure_ascii=False))
+
+
+        lcd = CharLCD('PCF8574', 0x3F)
+
+        i = 0
+
+        for item in result.get('items', []):    
+            lcd.cursor_pos = (i % 2, 0)
+            lcd.write_string(f"{item.get('quantity')} {item.get('color')}".ljust(16))
+            i = i+1
+            if (i % 2 == 0):
+                sleep(2)
+                lcd.cursor_pos = (1, 0)
+                lcd.write_string('                ')
 
     finally:
         if wav_path and os.path.exists(wav_path):
