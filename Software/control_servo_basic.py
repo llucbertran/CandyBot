@@ -1,27 +1,11 @@
-import RPi.GPIO as GPIO
+from adafruit_servokit import ServoKit
 import time
 
-SERVO_PIN = 18
+kit = ServoKit(channels=16, address=0x40)
+kit.servo[0].actuation_range = 180
+kit.servo[0].set_pulse_width_range(500, 2500)
 
-GPIO.setmode(GPIO.BCM)
-GPIO.setup(SERVO_PIN, GPIO.OUT)
-
-pwm = GPIO.PWM(SERVO_PIN, 50)
-pwm.start(0)
-
-def set_angle(angle):
-    duty = 2.5 + (angle / 180.0) * 10
-    pwm.ChangeDutyCycle(duty)
-    time.sleep(0.5)
-    pwm.ChangeDutyCycle(0)
-
-try:
-    set_angle(0)
-    time.sleep(1)
-    set_angle(90)
-    time.sleep(1)
-    set_angle(180)
-    time.sleep(1)
-finally:
-    pwm.stop()
-    GPIO.cleanup()
+for ang in [0, 90, 180, 90]:
+    kit.servo[0].angle = ang
+    print("angulo", ang)
+    time.sleep(2)
