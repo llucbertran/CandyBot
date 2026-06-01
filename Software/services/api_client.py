@@ -4,7 +4,9 @@ from dotenv import load_dotenv
 import requests
 import sounddevice as sd
 import scipy.io.wavfile as wav
+import numpy as np
 import tempfile
+import time
 import os
 load_dotenv()
 
@@ -16,24 +18,47 @@ print("DEBUG API_TOKEN:", API_TOKEN)
 
 SAMPLE_RATE = 44100
 CHANNELS = 1
+MAX_SECONDS = 8          # límit dur de gravació
+
+# Microphone input device (Electret Mic Breakout via USB audio adapter).
+# None = system default; or an int index / name substring.
+# List devices: python -c "import sounddevice; print(sounddevice.query_devices())"
+MIC_DEVICE = None
 
 
 # ─────────────────────────────────────────────
 # 🎤 GRAVAR AUDIO
+#    Grava fins que arribi un senyal de parada (stop_event)
+#    o fins a max_seconds, el que passi abans.
 # ─────────────────────────────────────────────
 
-def record_audio(seconds: int = 4) -> str:
-    print(f"Gravant {seconds} segons... parla ara!")
+def record_audio(max_seconds: int = MAX_SECONDS, stop_event=None) -> str:
+    print(f"Gravant (max {max_seconds}s)... parla ara!")
 
-    audio = sd.rec(
-        int(seconds * SAMPLE_RATE),
+    chunks = []
+
+    def _callback(indata, frames, time_info, status):
+        chunks.append(indata.copy())
+
+    with sd.InputStream(
         samplerate=SAMPLE_RATE,
         channels=CHANNELS,
-        dtype="int16"
-    )
+        dtype="int16",
+        device=MIC_DEVICE,
+        callback=_callback,
+    ):
+        start = time.time()
+        while time.time() - start < max_seconds:
+            if stop_event is not None and stop_event.is_set():
+                break
+            sd.sleep(50)  # ms
 
-    sd.wait()
-    print("Gravació acabada.")
+    print("Gravacio acabada.")
+
+    if chunks:
+        audio = np.concatenate(chunks, axis=0)
+    else:
+        audio = np.zeros((1, CHANNELS), dtype="int16")
 
     tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
     wav.write(tmp.name, SAMPLE_RATE, audio)
@@ -85,8 +110,8 @@ def send_audio_to_api(wav_path: str) -> dict:
 # 🔄 PIPELINE COMPLET (TIPUS README)
 # ─────────────────────────────────────────────
 
-def record_and_send(seconds: int = 4) -> dict:
-    wav_path = record_audio(seconds)
+def record_and_send(max_seconds: int = MAX_SECONDS, stop_event=None) -> dict:
+    wav_path = record_audio(max_seconds, stop_event)
 
     try:
         result = send_audio_to_api(wav_path)
