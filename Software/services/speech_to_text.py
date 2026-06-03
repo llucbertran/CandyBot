@@ -4,7 +4,7 @@ import tempfile
 import subprocess
 import os
 import json
-
+from adafruit_servokit import ServoKit
 from RPLCD.i2c import CharLCD
 from time import sleep
 
@@ -97,14 +97,36 @@ def main():
 
         i = 0
 
-        for item in result.get('items', []):    
-            lcd.cursor_pos = (i % 2, 0)
+        #canal de cada servo amb el seu color
+        colores_servos = {
+            'green': 0,
+            'purple': 1,
+            'red': 2,
+            'orange': 3,
+            'yellow': 4
+        }
+
+        kit = ServoKit(channels=16, address=0x40)
+        #inicialitzar els 5 servos
+        for x in range(0, 4):
+            kit.servo[x].actuation_range = 180
+            kit.servo[x].set_pulse_width_range(500, 2500)
+
+        for item in result.get('items', []):
+            lcd.cursor_pos = (0, 0)  # (columna, fila)
+            lcd.write_string('Dispensant:')    
+            lcd.cursor_pos = (1, 0)
             lcd.write_string(f"{item.get('quantity')} {item.get('color')}".ljust(16))
             i = i+1
-            if (i % 2 == 0):
-                sleep(2)
-                lcd.cursor_pos = (1, 0)
-                lcd.write_string('                ')
+            
+            color = colores_servos.get(item.get('color'))
+            quant = item.get('quantity')
+            
+            for j in range(0, quant):
+                kit.servo[color].angle = 5
+                sleep(0.2)
+                kit.servo[color].angle = 160
+            
 
     finally:
         if wav_path and os.path.exists(wav_path):
