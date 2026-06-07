@@ -420,3 +420,6 @@ FodyWeavers.xsd
 # Poetry virtual environment
 poetry.lock
 settings.local.json
+
+# CandyBot local stock database (SQLite, recreated at runtime)
+candy_stock.db
