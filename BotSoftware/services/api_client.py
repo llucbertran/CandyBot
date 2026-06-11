@@ -12,7 +12,7 @@ load_dotenv()
 API_URL   = os.getenv("API_URL")
 API_TOKEN = os.getenv("API_TOKEN")
 
-ALSA_DEVICE = "plughw:1,0"  # run 'arecord -l' on the Pi to list devices
+ALSA_DEVICE = "plughw:3,0"  # run 'arecord -l' on the Pi to list devices
 SAMPLE_RATE = 16000
 CHANNELS    = 1
 MAX_SECONDS = 15  # safety cap for crank-driven recording

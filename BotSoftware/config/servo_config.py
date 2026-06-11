@@ -31,9 +31,9 @@ DISPENSER_GAP_S  = 0.3
 
 DISPENSERS = {
     #         channel  rest  dispense
-    "green":  {"channel": 0, "rest": 160, "dispense": 5},
-    "purple": {"channel": 1, "rest": 160, "dispense": 5},
-    "red":    {"channel": 2, "rest": 160, "dispense": 5},
-    "orange": {"channel": 3, "rest": 160, "dispense": 5},
-    "yellow": {"channel": 4, "rest": 160, "dispense": 5},
+    "green":  {"channel": 0, "rest":  0, "dispense": 65},
+    "purple": {"channel": 1, "rest":  0, "dispense": 65},
+    "red":    {"channel": 2, "rest":  0, "dispense": 65},
+    "orange": {"channel": 3, "rest":  0, "dispense": 65},
+    "yellow": {"channel": 4, "rest": 60, "dispense":  0},  # inverted
 }
