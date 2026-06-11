@@ -5,7 +5,7 @@
 import time
 
 REED_PIN     = 17     # BCM pin wired to the reed switch
-IDLE_TIMEOUT = 1.5    # seconds without pulses -> crank considered stopped
+IDLE_TIMEOUT = 2.0    # seconds without pulses -> crank considered stopped
 BOUNCE_S     = 0.01   # reed switch debounce
 POLL_S       = 0.05
 SIM_TURN_S   = 4.0    # simulated cranking duration when there's no hardware

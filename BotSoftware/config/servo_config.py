@@ -26,14 +26,16 @@ DISK_SEGMENTS_S = {
 }
 
 # Dispenser servos — channels and angles confirmed on real hardware
-DISPENSER_HOLD_S = 0.2
-DISPENSER_GAP_S  = 0.3
+DISPENSER_HOLD_S  = 0.05  # pause between the two moves
+DISPENSER_GAP_S   = 0.2
+DISPENSER_STEP    = 5     # degrees per step (lower = slower)
+DISPENSER_STEP_MS = 0.01 # seconds between steps
 
 DISPENSERS = {
     #         channel  rest  dispense
-    "green":  {"channel": 0, "rest":  0, "dispense": 65},
-    "purple": {"channel": 1, "rest":  0, "dispense": 65},
-    "red":    {"channel": 2, "rest":  0, "dispense": 65},
-    "orange": {"channel": 3, "rest":  0, "dispense": 65},
-    "yellow": {"channel": 4, "rest": 60, "dispense":  0},  # inverted
+    "green":  {"channel": 0, "rest": 175, "dispense": 0},
+    "orange": {"channel": 1, "rest": 175, "dispense": 0},
+    "yellow": {"channel": 2, "rest": 175, "dispense": 0},
+    "red":    {"channel": 3, "rest": 175, "dispense": 0},
+    "purple": {"channel": 4, "rest":   0, "dispense": 175},  # inverted
 }

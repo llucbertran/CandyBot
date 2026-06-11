@@ -28,6 +28,18 @@ def _set_angle(channel, angle):
     _kit.servo[channel].angle = angle
 
 
+def _set_angle_slow(channel, angle, step=2, delay=0.02):
+    if SIMULATION:
+        print(f"[servo] ch{channel} -> {angle} deg (slow)")
+        return
+    current = _kit.servo[channel].angle or 0
+    step = step if angle > current else -step
+    for a in range(int(current), int(angle), step):
+        _kit.servo[channel].angle = a
+        time.sleep(delay)
+    _kit.servo[channel].angle = angle
+
+
 def _spin(channel, throttle, seconds):
     if SIMULATION:
         print(f"[servo] ch{channel} spin {seconds}s")
@@ -79,9 +91,9 @@ def dispense(color, qty=1):
     _ensure_init()
     d = cfg.DISPENSERS[color]
     for _ in range(qty):
-        _set_angle(d["channel"], d["dispense"])
+        _set_angle_slow(d["channel"], d["dispense"], cfg.DISPENSER_STEP, cfg.DISPENSER_STEP_MS)
         time.sleep(cfg.DISPENSER_HOLD_S)
-        _set_angle(d["channel"], d["rest"])
+        _set_angle_slow(d["channel"], d["rest"], cfg.DISPENSER_STEP, cfg.DISPENSER_STEP_MS)
         time.sleep(cfg.DISPENSER_GAP_S)
 
 
