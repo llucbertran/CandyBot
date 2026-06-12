@@ -423,3 +423,6 @@ settings.local.json
 
 # CandyBot local stock database (SQLite, recreated at runtime)
 candy_stock.db
+
+# dataset for tunning vision
+frames/

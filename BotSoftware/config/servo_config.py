@@ -21,15 +21,17 @@ RAMP_ANGLES = {
 }
 
 # Sorting disk (continuous 360°, 4 holes every 90°). It turns slowly and the
-# camera reads each candy as it passes. The times below derive from how long
-# one quarter turn takes, so calibrating DISK_QUARTER_S adjusts the whole flow.
+# camera reads each candy as it passes. Only DISK_SPEED needs tuning: the quarter
+# time (and everything derived from it) scales automatically with the speed.
 DISK_CHANNEL         = 7
-DISK_SPEED           = 0.20   # low continuous throttle; the sign sets direction
-DISK_QUARTER_S       = 2.0    # approx time to rotate one quarter (calibrate)
-DISK_RAMP_DELAY_S    = DISK_QUARTER_S - DISK_QUARTER_S / 3   # wait after detecting before aiming the ramp
+DISK_SPEED           = -0.20  # continuous throttle; the sign sets direction
+DISK_QUARTER_REF     = 0.192  # quarter-turn time x speed, measured once (0.96 s at 0.20)
+DISK_QUARTER_S       = DISK_QUARTER_REF / abs(DISK_SPEED)   # time to rotate one quarter
+DISK_RAMP_DELAY_S    = DISK_QUARTER_S / 3   # wait after detecting before aiming the ramp
 DISK_CANDY_GAP_S     = DISK_QUARTER_S / 2   # ignore re-reads of the candy just handled
-DISK_EMPTY_TIMEOUT_S = DISK_QUARTER_S * 2   # no candy for this long -> tray empty
-CAMERA_INTERVAL_S    = 0.1    # time between photos
+DISK_REARM_S         = 0.20                 # slot must be empty this long before the next count
+DISK_EMPTY_TIMEOUT_S = DISK_QUARTER_S * 4   # no candy for this long -> tray empty
+CAMERA_INTERVAL_S    = 0.0    # min time between photos (0 = as fast as the camera goes)
 
 # Dispenser servos — channels and angles confirmed on real hardware
 DISPENSER_HOLD_S  = 0.05  # pause between the two moves
@@ -40,8 +42,8 @@ DISPENSER_STEP_MS = 0.01 # seconds between steps
 DISPENSERS = {
     #         channel  rest  dispense
     "green":  {"channel": 0, "rest": 175, "dispense": 0},
-    "orange": {"channel": 1, "rest": 175, "dispense": 0},
+    "red":    {"channel": 1, "rest": 175, "dispense": 0},
     "yellow": {"channel": 2, "rest": 175, "dispense": 0},
-    "red":    {"channel": 3, "rest": 175, "dispense": 0},
+    "orange": {"channel": 3, "rest": 175, "dispense": 0},
     "purple": {"channel": 4, "rest":   0, "dispense": 175},  # inverted
 }

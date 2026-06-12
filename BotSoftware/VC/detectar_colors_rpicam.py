@@ -8,7 +8,6 @@ import time
 
 CARPETA = Path(__file__).parent
 
-inici = time.perf_counter()
 
 def capturar_imagen_rpicam(timeout_ms=1, width=None, height=None):
     with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
@@ -128,9 +127,10 @@ def seleccionar_contorn_skittle(contornos, shape):
 # DETECCIO DEL COLOR DEL SKITTLE
 # ============================================================
 
-def detectar_color_skittle_desde_array(imagen, mostrar=True):
+def detectar_color_skittle_desde_array(imagen, mostrar=True, verbose=False):
     if imagen is None:
-        print("No s'ha pogut capturar la imatge")
+        if verbose:
+            print("No s'ha pogut capturar la imatge")
         return None
 
     alto_original, ancho_original = imagen.shape[:2]
@@ -153,12 +153,14 @@ def detectar_color_skittle_desde_array(imagen, mostrar=True):
     contornos, _ = cv2.findContours(mascara, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     if not contornos:
-        print("No s'ha detectat cap skittle")
+        if verbose:
+            print("No s'ha detectat cap skittle")
         return None
 
     contorno_skittle = seleccionar_contorn_skittle(contornos, imagen.shape)
     if contorno_skittle is None:
-        print("No s'ha trobat cap objecte circular valid")
+        if verbose:
+            print("No s'ha trobat cap objecte circular valid")
         return None
 
     mascara_skittle = np.zeros(mascara.shape, dtype=np.uint8)
@@ -175,7 +177,8 @@ def detectar_color_skittle_desde_array(imagen, mostrar=True):
     pixels_v = v_channel[mascara_color > 0]
 
     if len(pixels_h) == 0:
-        print("No s'han pogut obtenir pixels del skittle")
+        if verbose:
+            print("No s'han pogut obtenir pixels del skittle")
         return None
 
     h_median = float(np.median(pixels_h))
@@ -183,7 +186,8 @@ def detectar_color_skittle_desde_array(imagen, mostrar=True):
     v_median = float(np.median(pixels_v))
     color = clasificar_color_hsv(h_median, s_median, v_median)
 
-    print(f"Resultat -> {color} (H={h_median:.1f}, S={s_median:.1f}, V={v_median:.1f})")
+    if verbose:
+        print(f"Resultat -> {color} (H={h_median:.1f}, S={s_median:.1f}, V={v_median:.1f})")
 
     if mostrar:
         x, y, w, h_rect = cv2.boundingRect(contorno_skittle)
@@ -213,12 +217,8 @@ def main():
     final_foto = time.perf_counter()
     total_foto = final_foto - inici_foto
     print(f"Captura de foto: {total_foto:.4f} s")
-    detectar_color_skittle_desde_array(imagen, mostrar=not args.no_mostrar)
+    detectar_color_skittle_desde_array(imagen, mostrar=not args.no_mostrar, verbose=True)
 
 
 if __name__ == '__main__':
     main()
-
-final = time.perf_counter()
-total = final - inici
-print(f"{total:.4f} s")

@@ -68,7 +68,9 @@ def empty_command():
 
 
 def low_stock(color, available):
-    show("Stock baix! " + CANDY, f"{color}: queden {available}")
+    import time
+    show("Stock insufic.", f"{color} max: {available}")
+    time.sleep(3)
 
 
 def reloading_start():

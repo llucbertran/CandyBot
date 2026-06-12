@@ -1,7 +1,6 @@
-# Reload flow: the disk turns slowly and the camera watches it. Each quarter turn
-# brings a new candy into view. When the camera reads a colour we wait a moment
-# for the candy to reach the ramp, aim the ramp and update stock. If no candy
-# shows up for two quarter turns the tray is empty and we stop.
+# Reload flow: the disk turns slowly and the camera watches the ROI at 30 fps.
+# A colour must appear in two consecutive frames before it counts (eliminates
+# stray false positives). Armed/disarmed logic ensures each slot is counted once.
 
 import threading
 import time
@@ -17,10 +16,13 @@ from BotSoftware.models import candy_stock
 def reload_once(should_cancel=None):
     """Sort skittles until the tray is empty, or should_cancel() returns True."""
     display.reloading_start()
+    vision_controller.start()
     servo_controller.disk_start()
-    count = 0
-    last_candy = time.time()
-    last_print = 0.0
+
+    count      = 0
+    armed      = True
+    last_seen  = time.time()
+    prev_color = None
 
     try:
         while True:
@@ -28,31 +30,35 @@ def reload_once(should_cancel=None):
                 print("Reload cancelled.")
                 break
 
-            color = vision_controller.detect_color()
-            now = time.time()
+            result = vision_controller.detect_color()
+            color  = result[0] if result else None
+            now    = time.time()
 
-            if now - last_print >= cfg.DISK_QUARTER_S:
-                print(f"  camera: {color or '-'}")
-                last_print = now
+            if color is not None and color == prev_color:
+                # Two consecutive frames agree → real candy
+                last_seen = now
+                if armed:
+                    armed = False
+                    print(f"  [detect] {color}")
+                    time.sleep(cfg.DISK_RAMP_DELAY_S)
+                    servo_controller.ramp_to(color)
+                    total = candy_stock.add_candy(color, 1)
+                    count += 1
+                    print(f"  +1 {color}  (total {total})")
+                    display.reloading(candy_stock.get_stock(), color)
+            else:
+                if now - last_seen >= cfg.DISK_REARM_S:
+                    armed = True
+                if now - last_seen >= cfg.DISK_EMPTY_TIMEOUT_S:
+                    print("Tray empty.")
+                    break
 
-            if color and now - last_candy >= cfg.DISK_CANDY_GAP_S:
-                last_candy = now                    # reset the timer at detection
-                time.sleep(cfg.DISK_RAMP_DELAY_S)   # let the candy reach the ramp
-                servo_controller.ramp_to(color)
-                total = candy_stock.add_candy(color, 1)
-                count += 1
-                print(f"  +1 {color} (total {total})")
-                display.reloading(candy_stock.get_stock(), color)
-                continue
+            prev_color = color
 
-            if now - last_candy >= cfg.DISK_EMPTY_TIMEOUT_S:
-                print("Tray empty.")
-                break
-
-            time.sleep(cfg.CAMERA_INTERVAL_S)
     finally:
         servo_controller.disk_stop()
         servo_controller.ramp_center()
+        vision_controller.release()
 
     display.reload_done(count)
     print(f"Reload done: {count} skittles.")
@@ -60,16 +66,13 @@ def reload_once(should_cancel=None):
 
 
 def reload_with_voice_cancel():
-    """Reload while a background thread listens for a voice 'cancel'.
-
-    Turn the crank during the reload and say "para" to stop early. The sorting
-    finishes the current skittle, then stops."""
+    """Reload while a background thread listens for a voice 'cancel'."""
     cancel = threading.Event()
-    done = threading.Event()
+    done   = threading.Event()
 
     def listen():
         while not cancel.is_set() and not done.is_set():
-            if crank.is_turning():                       # user grabbed the crank
+            if crank.is_turning():
                 response = api_client.record_and_send_while(crank.is_turning)
                 if response.get("action") == "cancel":
                     cancel.set()
