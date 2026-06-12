@@ -7,23 +7,29 @@ SG90_RANGE     = 180
 SG90_PULSE_MIN = 500   # µs at 0°
 SG90_PULSE_MAX = 2500  # µs at 180°
 
-# Ramp servo — TODO: assign channel after wiring
-RAMP_CHANNEL      = 8
+# Ramp servo — channel 6
+RAMP_CHANNEL      = 6
 RAMP_CENTER_ANGLE = 90
 RAMP_SETTLE_S     = 0.4
 
 RAMP_ANGLES = {
-    "red": 0, "orange": 45, "yellow": 90, "green": 135, "purple": 180,
+    "green":  38,
+    "orange": 138,
+    "yellow": 0,
+    "red":    88,
+    "purple": 178,
 }
 
-# Disk servo (continuous 360°) — TODO: assign channel and calibrate times
-DISK_CHANNEL        = 7
-DISK_SPEED          = 0.30
-DISK_CAMERA_PAUSE_S = 1.0
-
-DISK_SEGMENTS_S = {
-    "to_camera": 1.0, "to_ramp": 1.0, "to_recarga": 1.0,
-}
+# Sorting disk (continuous 360°, 4 holes every 90°). It turns slowly and the
+# camera reads each candy as it passes. The times below derive from how long
+# one quarter turn takes, so calibrating DISK_QUARTER_S adjusts the whole flow.
+DISK_CHANNEL         = 7
+DISK_SPEED           = 0.20   # low continuous throttle; the sign sets direction
+DISK_QUARTER_S       = 2.0    # approx time to rotate one quarter (calibrate)
+DISK_RAMP_DELAY_S    = DISK_QUARTER_S - DISK_QUARTER_S / 3   # wait after detecting before aiming the ramp
+DISK_CANDY_GAP_S     = DISK_QUARTER_S / 2   # ignore re-reads of the candy just handled
+DISK_EMPTY_TIMEOUT_S = DISK_QUARTER_S * 2   # no candy for this long -> tray empty
+CAMERA_INTERVAL_S    = 0.1    # time between photos
 
 # Dispenser servos — channels and angles confirmed on real hardware
 DISPENSER_HOLD_S  = 0.05  # pause between the two moves

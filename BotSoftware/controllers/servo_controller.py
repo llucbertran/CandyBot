@@ -40,13 +40,20 @@ def _set_angle_slow(channel, angle, step=2, delay=0.02):
     _kit.servo[channel].angle = angle
 
 
-def _spin(channel, throttle, seconds):
+def disk_start():
     if SIMULATION:
-        print(f"[servo] ch{channel} spin {seconds}s")
+        print("[servo] disk start")
         return
-    _kit.continuous_servo[channel].throttle = throttle
-    time.sleep(seconds)
-    _kit.continuous_servo[channel].throttle = 0
+    _kit.continuous_servo[cfg.DISK_CHANNEL].throttle = cfg.DISK_SPEED
+
+
+def disk_stop():
+    # duty_cycle = 0 cuts the pulse entirely; throttle = 0 only sends a neutral
+    # pulse that a continuous servo keeps reading as slow rotation.
+    if SIMULATION:
+        print("[servo] disk stop")
+        return
+    _kit._pca.channels[cfg.DISK_CHANNEL].duty_cycle = 0
 
 
 def _ensure_init():
@@ -72,19 +79,6 @@ def ramp_center():
     _ensure_init()
     _set_angle(cfg.RAMP_CHANNEL, cfg.RAMP_CENTER_ANGLE)
     time.sleep(cfg.RAMP_SETTLE_S)
-
-
-def disk_to_camera():
-    _spin(cfg.DISK_CHANNEL, cfg.DISK_SPEED, cfg.DISK_SEGMENTS_S["to_camera"])
-    time.sleep(cfg.DISK_CAMERA_PAUSE_S)
-
-
-def disk_to_ramp():
-    _spin(cfg.DISK_CHANNEL, cfg.DISK_SPEED, cfg.DISK_SEGMENTS_S["to_ramp"])
-
-
-def disk_to_recarga():
-    _spin(cfg.DISK_CHANNEL, cfg.DISK_SPEED, cfg.DISK_SEGMENTS_S["to_recarga"])
 
 
 def dispense(color, qty=1):
