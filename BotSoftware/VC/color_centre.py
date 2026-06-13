@@ -3,25 +3,25 @@ import json
 import pathlib
 import numpy as np
 
-# Small ROI slightly left of centre — where the candy slot passes
+# Small ROI slightly left of centre, where the candy slot passes.
 ROI_CX = 0.40   # centre x (fraction of frame width)
 ROI_CY = 0.50   # centre y (fraction of frame height)
 ROI_R  = 0.07   # half-size (fraction of frame width)
 
-V_MIN    = 20    # below this → too dark → void (disco caught by hue filter, not by V alone)
-SAT_VOID = 120   # below this → desaturated background → void  (empty slot S≈35)
+V_MIN    = 20    # below this the ROI is too dark to be a candy
+SAT_VOID = 120   # below this it is the empty slot (bright background, low saturation)
 
-# Disk surface hue filter (measured: H=152-167, S=120-175, V=60-115).
-# Purple candy is at H=172 S=241, safely outside this zone on both H and S.
-DISK_H_LO  = 148
-DISK_H_HI  = 179
-DISK_V_MAX = 130
+# Black disk surface. Its hue sits in a known band with medium value and
+# saturation, so candies (which are brighter and more saturated) fall outside it.
+DISK_H_LO    = 148
+DISK_H_HI    = 179
+DISK_V_MAX   = 130
 DISK_SAT_MAX = 200
 
 _CALIB_FILE = pathlib.Path(__file__).parent / "color_calibration.json"
 
+# Reference hues measured from the real camera output.
 _DEFAULTS = {
-    # Hues measured from real camera output (RGB→HSV, ExposureTime≈5000):
     "green":  45,
     "yellow": 95,
     "orange": 121,
@@ -29,7 +29,7 @@ _DEFAULTS = {
     "purple": 172,
 }
 
-DEBUG = True
+DEBUG = False
 _prev_log = object()
 
 
@@ -38,11 +38,11 @@ def _load_ref():
         try:
             data = json.loads(_CALIB_FILE.read_text())
             ref = {c: v["hue"] for c, v in data.items()}
-            print("[vision] calibración: " + " ".join(f"{c}=H{v}" for c, v in ref.items()))
+            print("[vision] calibration loaded: " + " ".join(f"{c}=H{v}" for c, v in ref.items()))
             return ref
         except Exception as e:
-            print(f"[vision] error en calibración, usando defaults: {e}")
-    print("[vision] sin calibración — corre calibrar_colores.py")
+            print(f"[vision] calibration error, using defaults: {e}")
+    print("[vision] no calibration found, run calibrar_colores.py")
     return _DEFAULTS.copy()
 
 
@@ -62,7 +62,7 @@ def get_roi(frame):
 
 
 def detect(frame):
-    """frame: RGB from camera. Returns (color_or_None, median_sat)."""
+    """Classify the candy in the ROI. Returns (color_or_None, median_sat)."""
     roi = get_roi(frame)
     hsv = cv2.cvtColor(roi, cv2.COLOR_RGB2HSV)
     h_ch, s_ch, v_ch = cv2.split(hsv)
@@ -72,17 +72,13 @@ def detect(frame):
     med_v = int(np.median(v_ch))
 
     if med_h <= 12:
-        result = None          # disk wrap-around (H≈0-12, same physical hue as H≈155-179)
-        reason = "disco-L"
+        result, reason = None, "disk-low"          # disk hue wrapped around 0
     elif DISK_H_LO <= med_h <= DISK_H_HI and med_v < DISK_V_MAX and med_s < DISK_SAT_MAX:
-        result = None          # black disk surface (H≈148-179, medium-V, medium-S)
-        reason = "disco-H"
+        result, reason = None, "disk"              # black disk surface
     elif med_v < V_MIN:
-        result = None          # too dark
-        reason = "muy-oscuro"
+        result, reason = None, "dark"
     elif med_s < SAT_VOID:
-        result = None          # empty slot — bright background through hole
-        reason = "slot-vacío"
+        result, reason = None, "empty"             # empty slot
     else:
         result = min(REF_HUE, key=lambda c: _hue_dist(med_h, REF_HUE[c]))
         reason = f"H={med_h}"

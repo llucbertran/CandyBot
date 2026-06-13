@@ -18,7 +18,6 @@ from BotSoftware.VC.color_centre import (
     DISK_H_LO, DISK_H_HI, DISK_V_MAX, DISK_SAT_MAX,
     REF_HUE, _hue_dist,
 )
-
 from BotSoftware.controllers import servo_controller
 
 INTERVAL_S = 0.10   # segundos entre lecturas (10 Hz)

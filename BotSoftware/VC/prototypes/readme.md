@@ -1,3 +1,7 @@
+> **Nota:** Aquesta carpeta conté prototips inicials de visió per computador. No
+> formen part del sistema final, que utilitza `BotSoftware/VC/color_centre.py` i
+> `camera_stream.py`. Es conserven com a documentació de la investigació.
+
 # Detecció de color de Skittles amb Visió per Computador
 
 Aquest directori conté un petit programa en Python per detectar automàticament el color d'un Skittle a partir d'imatges capturades amb càmera.

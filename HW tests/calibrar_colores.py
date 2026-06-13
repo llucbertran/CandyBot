@@ -1,10 +1,9 @@
-# Interactive colour calibration.
-# Measures void (empty slot), disk (black disk surface), and each candy colour.
-# Saves BotSoftware/VC/color_calibration.json with hue references.
-# V_MIN and SAT_VOID in color_centre.py may need manual adjustment based on the
-# disk/void readings printed here.
+# Calibracion interactiva de color.
+# Mide el void (slot vacio), el disco negro y cada color de caramelo, y guarda
+# las referencias de hue en BotSoftware/VC/color_calibration.json.
+# Si los avisos lo indican, ajusta V_MIN / SAT_VOID en color_centre.py.
 #
-# Usage:  python "HW tests/calibrar_colores.py"
+# Uso:  python "HW tests/calibrar_colores.py"
 
 import sys
 import json
@@ -24,7 +23,7 @@ SAMPLE_S = 1.5
 
 
 def sample(label):
-    """Capture ~1.5s of frames and return median H, S, V of the ROI."""
+    """Captura ~1.5s de frames y devuelve la mediana H, S, V del ROI."""
     hs, ss, vs = [], [], []
     t0 = time.time()
     while time.time() - t0 < SAMPLE_S:
@@ -44,7 +43,7 @@ def sample(label):
 
 
 def live_preview():
-    """Print one live reading so the user can see what the ROI sees now."""
+    """Muestra una lectura instantanea del ROI."""
     frame = cam.capture_frame()
     roi   = get_roi(frame)
     hsv   = cv2.cvtColor(roi, cv2.COLOR_RGB2HSV)
@@ -53,7 +52,7 @@ def live_preview():
 
 
 def main():
-    print("=== Calibración de colores ===")
+    print("=== Calibracion de colores ===")
     print(f"ROI: x={ROI_CX:.0%}  y={ROI_CY:.0%}  radio={ROI_R:.0%} del frame")
     print(f"Umbrales actuales: V_MIN={V_MIN}  SAT_VOID={SAT_VOID}\n")
 
@@ -61,35 +60,33 @@ def main():
     calib = {}
 
     try:
-        # — Void (empty slot / background) —
-        input("Sin caramelos, sin disco. Pulsa Enter para medir el VOID (slot vacío)...")
+        # Void (slot vacio / fondo)
+        input("Sin caramelos, sin disco. Pulsa Enter para medir el VOID (slot vacio)...")
         live_preview()
         vh, vs_v, vv = sample("void")
-        print(f"  → void: H={vh} S={vs_v} V={vv}")
+        print(f"  void: H={vh} S={vs_v} V={vv}")
         if vs_v >= SAT_VOID:
-            print(f"  [!] AVISO: S_void={vs_v} >= SAT_VOID={SAT_VOID} → ajusta SAT_VOID en color_centre.py")
+            print(f"  [AVISO] S_void={vs_v} >= SAT_VOID={SAT_VOID}: ajusta SAT_VOID en color_centre.py")
         print()
 
-        # — Disk (black disk surface, no slot) —
+        # Disco (superficie negra del disco)
         input("Pon la superficie negra del disco bajo el ROI. Pulsa Enter para medir el DISCO...")
         live_preview()
         dh, ds, dv = sample("disk")
-        print(f"  → disco: H={dh} S={ds} V={dv}")
-        if dv >= V_MIN:
-            print(f"  [!] AVISO: V_disco={dv} >= V_MIN={V_MIN} → ajusta V_MIN en color_centre.py")
-        else:
-            print(f"  ✓ V_disco={dv} < V_MIN={V_MIN} → disco detectado como void (OK)")
+        print(f"  disco: H={dh} S={ds} V={dv}")
+        if dv >= 130:
+            print(f"  [AVISO] V_disco={dv} alto: revisa el filtro de disco en color_centre.py")
         print()
 
-        # — Candy colours —
+        # Colores de caramelo
         for color in COLORS:
             while True:
                 input(f"Pon {color.upper()} en la zona del ROI y pulsa Enter...")
                 live_preview()
                 h, s, v = sample(color)
                 if s < SAT_VOID:
-                    print(f"  [!] AVISO: S={s} < SAT_VOID={SAT_VOID} → este caramelo se detectará como void")
-                ans = input(f"  → H={h} S={s} V={v}  ¿OK? (Enter=sí / n=repetir): ").strip().lower()
+                    print(f"  [AVISO] S={s} < SAT_VOID={SAT_VOID}: este caramelo se detectaria como void")
+                ans = input(f"  H={h} S={s} V={v}  OK? (Enter=si / n=repetir): ").strip().lower()
                 if ans != "n":
                     calib[color] = {"hue": h, "sat": s, "val": v}
                     print()
@@ -103,8 +100,7 @@ def main():
     print(f"  {'color':8}  H    S    V")
     for c, v in calib.items():
         print(f"  {c:8}  {v['hue']:3d}  {v['sat']:3d}  {v['val']:3d}")
-    print("\nAhora corre test_ordenar.py — el detector usará estos valores.")
-    print(f"Si los avisos indican problemas, ajusta V_MIN / SAT_VOID en color_centre.py.")
+    print("\nAhora corre test_ordenar.py: el detector usara estos valores.")
 
 
 if __name__ == "__main__":

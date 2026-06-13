@@ -7,7 +7,7 @@ SG90_RANGE     = 180
 SG90_PULSE_MIN = 500   # µs at 0°
 SG90_PULSE_MAX = 2500  # µs at 180°
 
-# Ramp servo — channel 6
+# Ramp servo (channel 6)
 RAMP_CHANNEL      = 6
 RAMP_CENTER_ANGLE = 90
 RAMP_SETTLE_S     = 0.4
@@ -33,7 +33,7 @@ DISK_REARM_S         = 0.20                 # slot must be empty this long befor
 DISK_EMPTY_TIMEOUT_S = DISK_QUARTER_S * 4   # no candy for this long -> tray empty
 CAMERA_INTERVAL_S    = 0.0    # min time between photos (0 = as fast as the camera goes)
 
-# Dispenser servos — channels and angles confirmed on real hardware
+# Dispenser servos: channels and angles confirmed on real hardware
 DISPENSER_HOLD_S  = 0.05  # pause between the two moves
 DISPENSER_GAP_S   = 0.2
 DISPENSER_STEP    = 5     # degrees per step (lower = slower)

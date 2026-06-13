@@ -2,9 +2,13 @@
 # The rest of the code calls the semantic screens below, so swapping the
 # panel later only means rewriting this file.
 
+import time
+
 LCD_ADDRESS = 0x3F
 LCD_COLS = 16
 LCD_ROWS = 2
+
+LOW_STOCK_HOLD_S = 3   # keep the "not enough stock" message on screen this long
 
 # Custom glyphs stored in the LCD's CGRAM (5x8 pixels each).
 _GLYPHS = {
@@ -68,9 +72,8 @@ def empty_command():
 
 
 def low_stock(color, available):
-    import time
     show("Stock insufic.", f"{color} max: {available}")
-    time.sleep(3)
+    time.sleep(LOW_STOCK_HOLD_S)
 
 
 def reloading_start():

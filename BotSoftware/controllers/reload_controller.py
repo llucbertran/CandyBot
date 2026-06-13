@@ -35,7 +35,7 @@ def reload_once(should_cancel=None):
             now    = time.time()
 
             if color is not None and color == prev_color:
-                # Two consecutive frames agree → real candy
+                # Two consecutive frames agree: real candy
                 last_seen = now
                 if armed:
                     armed = False

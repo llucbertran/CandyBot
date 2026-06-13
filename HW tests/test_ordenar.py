@@ -1,6 +1,6 @@
 # HW test: sorting mechanism (disk + camera + ramp + dispensers).
 # Sorts skittles into their cylinders until the tray is empty.
-# No voice / mic involved — just the hardware loop.
+# No voice / mic involved, just the hardware loop.
 #   python "HW tests/test_ordenar.py"
 
 import sys
