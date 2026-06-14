@@ -9,6 +9,8 @@ Developed for the **Robotics Lab (RLP)** course at the Universitat Autònoma de 
 
 ![CandyBot](assets/robot.jpg)
 
+[▶ Watch the demo](https://youtu.be/PrirMlMhzKU) *(Catalan with English subtitles)*
+
 > **Autism & HRI.** Sorting and ordering objects is a well-documented self-regulatory
 > behavior across the autism spectrum — it introduces predictability into a sensory
 > environment that can feel overwhelming, and the act of categorising provides a
