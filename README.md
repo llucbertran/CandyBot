@@ -430,6 +430,8 @@ friction that disrupts the timing of the sorting cycle.
 
 STL files are available in `3D Models/`.
 
+> **Note:** The sorting disk shown in some renders is an earlier single-slot design that required the disk to oscillate back and forth for each candy. The final version uses a **continuous-rotation disk with 4 slots**, eliminating the back-and-forth motion and multiplying sorting throughput by 4×.
+
 ---
 
 # The API
