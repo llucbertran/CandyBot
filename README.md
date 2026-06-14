@@ -7,9 +7,21 @@ each colour, and drops it into the matching container.
 
 Developed for the **Robotics Lab (RLP)** course at the Universitat Autònoma de Barcelona.
 
-> **Research note:** CandyBot is designed with children on the autism spectrum in mind.
-> Ongoing research on human–robot interaction is attached to this project; further details
-> will be published soon.
+> **Autism & HRI.** Sorting and ordering objects is a well-documented self-regulatory
+> behavior across the autism spectrum — it introduces predictability into a sensory
+> environment that can feel overwhelming, and the act of categorising provides a
+> satisfying, calming loop. CandyBot engages that same tendency in a playful context,
+> while also offering a novel interaction modality: voice combined with a physical crank,
+> which reduces the social pressure of direct human interaction.
+>
+> Color choices were informed by consultations with professionals in the field. Research
+> shows that highly saturated or bright colors can be overstimulating for many individuals
+> with ASD, while neutral, muted tones tend to be more comfortable. That said, autism is
+> a broad spectrum and no single palette works universally — a conclusion reinforced by
+> the professionals consulted during development. The robot's exterior is therefore black:
+> visually quiet, non-imposing, and unobtrusive in any environment. The interior uses red
+> accents to draw the user's attention and spark curiosity, without making the robot
+> visually dominant in the space around it.
 
 ---
 
@@ -21,8 +33,8 @@ Developed for the **Robotics Lab (RLP)** course at the Universitat Autònoma de 
   - [Cloud API](#cloud-api)
 - [Colour vision](#colour-vision)
   - [Detection pipeline](#detection-pipeline)
-  - [HSV classification rules](#hsv-classification-rules)
-  - [ML model (alternative)](#ml-model-alternative)
+  - [HSV classification](#hsv-classification)
+- [3D designs](#3d-designs)
 - [Dispensing flow](#dispensing-flow)
 - [Reload / self-sorting flow](#reload--self-sorting-flow)
 - [Stock management](#stock-management)
@@ -96,7 +108,7 @@ BotSoftware/main.py
   ├── candy_controller   — stock check → servo dispatch → stock update
   ├── reload_controller  — disk + camera loop with voice-cancel support
   ├── servo_controller   — PCA9685 driver, dispense(color, qty), ramp_to(color)
-  └── vision_controller  — rpicam-still capture + colour classification
+  └── vision_controller  — picamera2 frame capture + ROI colour classification
 ```
 
 The main loop is intentionally simple:
@@ -139,53 +151,45 @@ Timing for each stage (STT, LLM, total) is logged at INFO level on every request
 
 ## Detection pipeline
 
-The vision system uses **OpenCV** on a still image captured with `rpicam-still`.
-Each candy is photographed individually as it reaches the camera window in the
-rotating tray.
+The vision system runs a **persistent picamera2 stream** at ~30 fps with fixed
+exposure and gain, ensuring colour consistency across frames. During reload, the
+system inspects a small ROI at a fixed position in the frame — the point where
+each candy slot passes under the lens.
 
 ```
-rpicam-still capture
+picamera2 frame (640 × 480)
   │
-  ├── resize to max 700 px wide (normalise scale)
+  ├── extract ROI  (centred at 40 % × 50 % of frame, radius 7 % of width)
   ├── convert BGR → HSV
-  ├── threshold on saturation + value  →  binary mask
-  ├── morphological open + close       →  remove noise
-  ├── find external contours
-  ├── select best Skittle contour:
-  │     area between 150 px² and 10 % of frame
-  │     circularity ≥ 0.45
-  │     aspect ratio  0.55 – 1.45
-  │     does not touch frame border (5 px margin)
-  │     scored by  area × circularity × (1 − distance_from_centre)
-  ├── mask pixels inside the contour with s ≥ 80
-  └── median H, S, V  →  classify_color_hsv()
+  ├── compute median H, S, V across the ROI
+  │
+  ├── reject: H ≤ 12                        → disk hue wrapping near 0
+  ├── reject: H 148–179 + V < 130 + S < 200 → black disk surface
+  ├── reject: V < 20                         → too dark (shadow / gap)
+  ├── reject: S < 120                        → empty slot / background
+  │
+  └── classify: nearest reference hue (circular distance) → colour name
 ```
 
-The two-consecutive-frames confirmation rule (in `reload_controller`) prevents a
-single blurry capture from triggering a wrong bin assignment.
+A **two-consecutive-frames** confirmation rule (in `reload_controller`) prevents
+stray reflections or partial coverage from triggering a wrong bin assignment.
 
-## HSV classification rules
+## HSV classification
 
-OpenCV uses H ∈ [0, 179]. The classifier maps median hue to colour:
+OpenCV uses H ∈ [0, 179]. Each colour is represented by a single reference hue;
+classification picks the closest one by circular distance.
 
-| Hue range | Colour |
-|-----------|--------|
-| < 10 or ≥ 170 | red |
-| 10 – 23 | orange |
-| 24 – 39 | yellow |
-| 40 – 84 | green |
-| 130 – 159 | purple / lila |
+| Colour | Default reference hue |
+|--------|-----------------------|
+| green  | 45 |
+| yellow | 95 |
+| orange | 121 |
+| red    | 135 |
+| purple | 172 |
 
-Pixels with V < 45 are discarded as shadow. Pixels with S < 45 and V > 150 are
-classified as white/grey (background) and also discarded.
-
-## ML model (alternative)
-
-`BotSoftware/VC/color_model.pkl` is a trained scikit-learn classifier
-(trained with `HW tests/entrenar_modelo.py` from a dataset captured with
-`HW tests/capturar_dataset.py`). The HSV rule-based approach is the default;
-the ML model can be swapped in via `vision_controller` if rule accuracy is
-insufficient under a given lighting setup.
+Reference hues are loaded at startup from `BotSoftware/VC/color_calibration.json`
+if the file exists. Run `HW tests/calibrar_colores.py` to measure and save the
+per-unit hues for your specific camera and lighting conditions.
 
 ---
 
@@ -308,12 +312,11 @@ CandyBot/
 │   │   └── candy_stock.py        SQLite stock access layer
 │   ├── services/
 │   │   └── api_client.py         Audio recording + HTTP post to API
-│   └── VC/                       Vision development utilities
-│       ├── detectar_colors.py    HSV rule-based classifier (standalone)
-│       ├── detectar_colors_rpicam.py   Same, using rpicam-still
-│       ├── color_model.pkl       Trained ML classifier (alternative)
-│       ├── capturar_dataset.py   (in HW tests) Dataset capture script
-│       └── entrenar_modelo.py    (in HW tests) Model training script
+│   └── VC/                       Vision module
+│       ├── camera_stream.py      Picamera2 continuous capture
+│       ├── color_centre.py       ROI extraction + HSV hue classification
+│       ├── color_calibration.json  Per-unit hue calibration (generated)
+│       └── prototypes/           Standalone development scripts
 │
 ├── Api/                        Cloud service (FastAPI + Docker)
 │   ├── main.py                 FastAPI app, /v1/command endpoint
@@ -334,10 +337,8 @@ CandyBot/
 │   ├── test_pantalla.py        LCD display
 │   ├── control_servo_basic.py  Raw servo movement
 │   ├── control_pantallaLCD_basic.py  Raw LCD output
-│   ├── capturar_dataset.py     Capture labelled images for ML training
-│   ├── entrenar_modelo.py      Train and save color_model.pkl
-│   ├── speech_to_text.py       Microphone + STT smoke test
-│   └── debug_pass.py           Miscellaneous debug helpers
+│   ├── calibrar_colores.py     Calibrate per-unit colour reference hues
+│   └── ver_colores.py          Live colour detection preview
 │
 └── 3D Models/                  Printable parts (.stl) — being finalised
 ```
@@ -384,10 +385,34 @@ Verify against `BotSoftware/config/servo_config.py` before first run.
 | LCD | I2C `0x3F` |
 | Reed switch | GPIO 17 (BCM) |
 | Microphone | ALSA `plughw:1,0` |
-| Camera | Pi camera port (CSI), via `rpicam-still` |
+| Camera | Pi camera port (CSI), via picamera2 |
 
 Find your microphone device with `arecord -l`. Update `servo_config.py` if your
 I2C addresses differ (use `i2cdetect -y 1` to scan the bus).
+
+---
+
+# 3D designs
+
+All structural and mechanical parts are custom-designed for this project from
+scratch. Designs stem from research and inspiration from existing mechanisms,
+adapted and shaped to fit CandyBot's specific requirements.
+
+The final design comprises around **29 distinct printable parts**, though many more
+were designed along the way — early prototypes, intermediate versions, and parts
+that were later corrected or replaced as the design evolved.
+
+Each part went through several design iterations, guided by two priorities:
+**ease of maintenance** — individual parts can be removed and replaced without
+disassembling the whole robot — and **robust assembly**, using screwed joints
+throughout to avoid snap fits that degrade over time.
+
+Dimensional accuracy was especially critical for the moving mechanisms. The
+sorting tray, the dispensers, and the directional ramp all depend on tight
+tolerances: even small deviations in a sliding or rotating part introduce
+friction that disrupts the timing of the sorting cycle.
+
+STL published in `3D Models/`.
 
 ---
 
@@ -500,19 +525,19 @@ docker run -p 8080:8080 \
   adafruit-servokit
   RPLCD
   opencv-python
+  picamera2
   ```
 
 - System tools (pre-installed on Raspberry Pi OS):
 
   ```
-  arecord      # ALSA audio recording
-  rpicam-still # Pi camera capture
+  arecord   # ALSA audio recording
   ```
 
 Install Python dependencies:
 
 ```bash
-pip install requests python-dotenv gpiozero adafruit-servokit RPLCD opencv-python
+pip install requests python-dotenv gpiozero adafruit-servokit RPLCD opencv-python picamera2
 ```
 
 ## Configuration
