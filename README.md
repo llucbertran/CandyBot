@@ -318,18 +318,19 @@ CandyBot/
 │       ├── color_calibration.json  Per-unit hue calibration (generated)
 │       └── prototypes/           Standalone development scripts
 │
-├── Api/                        Cloud service (FastAPI + Docker)
-│   ├── main.py                 FastAPI app, /v1/command endpoint
-│   ├── config.py               Settings via environment variables
-│   ├── models.py               Pydantic response schema
-│   ├── Dockerfile              Container definition
-│   ├── pyproject.toml          Poetry dependencies
-│   └── services/
-│       ├── llm_client.py       Vertex AI / Gemini 2.5 Flash client
-│       ├── speech_to_text.py   Google STT v2 client
-│       ├── parse_and_validate.py   JSON parse + pydantic validation
-│       ├── prompt_loader.py    Load system prompt from file
-│       └── system_prompt.txt   LLM system prompt
+├── Software/
+│   └── Api/                        Cloud service (FastAPI + Docker)
+│       ├── main.py                 FastAPI app, /v1/command endpoint
+│       ├── config.py               Settings via environment variables
+│       ├── models.py               Pydantic response schema
+│       ├── Dockerfile              Container definition
+│       ├── pyproject.toml          Poetry dependencies
+│       └── services/
+│           ├── llm_client.py       Vertex AI / Gemini 2.5 Flash client
+│           ├── speech_to_text.py   Google STT v2 client
+│           ├── parse_and_validate.py   JSON parse + pydantic validation
+│           ├── prompt_loader.py    Load system prompt from file
+│           └── system_prompt.txt   LLM system prompt
 │
 ├── HW tests/                   Standalone hardware verification scripts
 │   ├── test_palanca.py         Crank / reed switch
@@ -466,7 +467,7 @@ Convert a voice clip to a structured candy command.
 
 ## LLM prompt design
 
-The system prompt (`Api/services/system_prompt.txt`) instructs Gemini to:
+The system prompt (`Software/Api/services/system_prompt.txt`) instructs Gemini to:
 
 - Output **only valid JSON**, matching the `CandyBotResponse` schema.
 - Map colour names from Catalan and Spanish to the canonical English set
