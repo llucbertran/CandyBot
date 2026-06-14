@@ -7,6 +7,8 @@ each colour, and drops it into the matching container.
 
 Developed for the **Robotics Lab (RLP)** course at the Universitat Autònoma de Barcelona.
 
+![CandyBot](assets/robot.jpg)
+
 > **Autism & HRI.** Sorting and ordering objects is a well-documented self-regulatory
 > behavior across the autism spectrum — it introduces predictability into a sensory
 > environment that can feel overwhelming, and the act of categorising provides a
@@ -413,7 +415,20 @@ sorting tray, the dispensers, and the directional ramp all depend on tight
 tolerances: even small deviations in a sliding or rotating part introduce
 friction that disrupts the timing of the sorting cycle.
 
-STL published in `3D Models/`.
+<table>
+  <tr>
+    <td><img src="3D%20Models/render%201.png" width="100%"></td>
+    <td><img src="3D%20Models/render%202.png" width="100%"></td>
+    <td><img src="3D%20Models/render%203.png" width="100%"></td>
+  </tr>
+  <tr>
+    <td><img src="3D%20Models/render%204.png" width="100%"></td>
+    <td><img src="3D%20Models/render%205.png" width="100%"></td>
+    <td><img src="3D%20Models/render%206.png" width="100%"></td>
+  </tr>
+</table>
+
+STL files are available in `3D Models/`.
 
 ---
 
