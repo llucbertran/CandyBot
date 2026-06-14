@@ -1,125 +1,591 @@
 # CandyBot
 
-CandyBot is a voice-controlled candy dispenser built around a Raspberry Pi. A user
-asks for sweets out loud, in Catalan or Spanish, and the robot serves the requested
-colours and amounts. It also refills itself: a rotating tray feeds candies past a
-camera one by one, reads each colour, and drops it into the matching container.
+A voice-controlled candy dispenser built on a Raspberry Pi. A user asks for sweets out
+loud — in **Catalan or Spanish** — and the robot serves the requested colours and amounts.
+It also sorts itself: a rotating tray feeds Skittles one by one past a camera, reads
+each colour, and drops it into the matching container.
 
-The robot works with Skittles, sorted into five colours (red, orange, yellow, green
-and purple). It was developed for the Robotics Lab (RLP) course at the Universitat
-Autònoma de Barcelona.
+Developed for the **Robotics Lab (RLP)** course at the Universitat Autònoma de Barcelona.
 
-## Motivation
+> **Research note:** CandyBot is designed with children on the autism spectrum in mind.
+> Ongoing research on human–robot interaction is attached to this project; further details
+> will be published soon.
 
-Beyond being a fun machine, CandyBot is designed with children on the autism spectrum in mind.
-We have a research ongoing about the topic and will give further details soon.
+---
 
-## How it works
+# Table of Contents
 
-1. The user turns the crank. A magnet sweeps past a reed switch, and those pulses
-   tell the Pi the user is active, so recording starts.
-2. When the crank stops, recording stops and the audio clip is sent to the CandyBot API.
-3. The API transcribes the speech and turns it into a structured command: an action
-   (dispense, reload or cancel) and a list of colours with quantities.
-4. The Pi acts on it, dispensing the requested candies or running the self-sorting
-   refill routine, and shows progress on the LCD screen.
+- [How it works](#how-it-works)
+- [System architecture](#system-architecture)
+  - [Pi software (BotSoftware)](#pi-software-botsoftware)
+  - [Cloud API](#cloud-api)
+- [Colour vision](#colour-vision)
+  - [Detection pipeline](#detection-pipeline)
+  - [HSV classification rules](#hsv-classification-rules)
+  - [ML model (alternative)](#ml-model-alternative)
+- [Dispensing flow](#dispensing-flow)
+- [Reload / self-sorting flow](#reload--self-sorting-flow)
+- [Stock management](#stock-management)
+- [Repository layout](#repository-layout)
+- [Hardware](#hardware)
+  - [Bill of materials](#bill-of-materials)
+  - [Servo channel map](#servo-channel-map)
+  - [Wiring defaults](#wiring-defaults)
+- [The API](#the-api)
+  - [Endpoint reference](#endpoint-reference)
+  - [LLM prompt design](#llm-prompt-design)
+  - [Deployment](#deployment)
+- [Running the robot](#running-the-robot)
+  - [Requirements](#requirements)
+  - [Configuration](#configuration)
+  - [Start](#start)
+  - [Testing subsystems individually](#testing-subsystems-individually)
+  - [Developing without hardware](#developing-without-hardware)
+- [Team](#team)
+- [License](#license)
 
-Stock is tracked locally in a SQLite database, so the robot knows what it holds and
-declines requests it cannot fulfil.
+---
 
-## Repository layout
+# How it works
 
 ```
-BotSoftware/   Code that runs on the Raspberry Pi
-Api/           Cloud service: speech-to-text + language model (FastAPI)
-HW tests/      Standalone scripts to check each hardware part on its own
-3D Models/     Printable parts (.stl) for the chassis and mechanism
+┌──────────────────────────────────────────────────────────────────┐
+│  1. User turns crank   →  reed switch pulses  →  Pi starts rec.  │
+│  2. Crank stops        →  WAV clip posted to Cloud API           │
+│  3. API: STT           →  Gemini LLM          →  JSON command    │
+│  4. Pi: dispense / reload / cancel            →  LCD feedback    │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-The printable parts are still being finalised and will be added to `3D Models/`.
+1. **Crank input.** A magnet sweeps past a reed switch once per revolution.
+   The Pi counts pulses to detect user activity and starts recording automatically
+   — no buttons, no touch screen.
 
-## Hardware
+2. **Recording.** While the crank is turning, audio is streamed to a buffer.
+   When the crank stops, the clip is closed and sent as a WAV file to the
+   CandyBot API over HTTPS.
 
-- Raspberry Pi 4
-- Raspberry Pi Camera Module v2
-- PCA9685 16-channel PWM driver (I2C)
-- 5 SG90 servos, one per colour container (the dispensers)
-- 1 SG90 servo for the directional ramp
-- 1 continuous-rotation servo for the sorting tray
-- 16x2 character LCD display with a PCF8574 I2C backpack
-- USB sound card with an electret microphone
-- Reed switch and a magnet, mounted on the crank
+3. **Language understanding.** The API pipeline has two stages:
+   - **Speech-to-Text (Google STT v2)** transcribes the audio, tuned for Catalan
+     (`ca-ES`).
+   - **Gemini 2.5 Flash (Vertex AI)** reads the transcript and emits a strict JSON
+     command describing what the user asked for.
 
-The default addresses and pins are defined in `BotSoftware/config/servo_config.py` and
-in each controller; verify them against your own build:
+4. **Execution.** The Pi interprets the JSON command and runs the matching flow:
+   dispense specific colours and amounts, run the self-sorting reload routine, or
+   do nothing if the intent was unclear.
 
-- PCA9685 on I2C address `0x40`. Dispenser servos use channels 0 to 4
-  (green, purple, red, orange, yellow). The ramp and tray channels are assigned
-  during assembly.
-- LCD on I2C address `0x3F`.
-- Reed switch on GPIO 17 (BCM).
-- Microphone as ALSA device `plughw:1,0` (find yours with `arecord -l`).
-- Camera through the standard Pi camera port, read with `rpicam-still`.
+Throughout the interaction the LCD screen shows the current state (idle, listening,
+dispensing a colour, low stock warning, etc.).
 
-## The API
+---
 
-The API is a small FastAPI service deployed on Google Cloud Run that turns a voice
-clip into a structured command. It uses two Google Cloud services:
+# System architecture
 
-- Speech-to-Text (v2) for transcription, configured for Catalan (`ca-ES`).
-- Vertex AI (Gemini 2.5 Flash) to read the transcript and emit strict JSON.
+## Pi software (BotSoftware)
 
-It exposes a single endpoint, `POST /v1/command`, which takes a WAV file and returns:
+The on-device code follows a **controller-per-subsystem** pattern. Each controller
+owns one piece of hardware and exposes a small, stable interface to the rest of
+the system.
+
+```
+BotSoftware/main.py
+  │
+  ├── crank_controller   — GPIO reed switch, wait_for_turn(), is_turning()
+  ├── display_controller — 16×2 LCD, named states (idle, listening, dispensing…)
+  ├── candy_controller   — stock check → servo dispatch → stock update
+  ├── reload_controller  — disk + camera loop with voice-cancel support
+  ├── servo_controller   — PCA9685 driver, dispense(color, qty), ramp_to(color)
+  └── vision_controller  — rpicam-still capture + colour classification
+```
+
+The main loop is intentionally simple:
+
+```python
+while True:
+    display.idle()
+    crank.wait_for_turn()          # blocks until crank spins
+    display.listening()
+    response = api_client.record_and_send_while(crank.is_turning)
+
+    if response["action"] == "dispense":
+        candy_controller.dispense(response["items"])
+    elif response["action"] == "reload":
+        reload_controller.reload_with_voice_cancel()
+    # cancel / nothing → loop back
+```
+
+## Cloud API
+
+The API is a **FastAPI** application containerised with Docker and deployed to
+**Google Cloud Run**. It is stateless: each request is fully self-contained.
+
+```
+POST /v1/command
+  │
+  ├── validate content-type and file size
+  ├── Google STT v2  →  transcript (str)
+  ├── Gemini 2.5 Flash  →  raw JSON (str)
+  ├── pydantic parse + validate  →  CandyBotResponse
+  └── return JSON response
+```
+
+Request authentication uses a shared secret passed in the `X-API-Token` header.
+Timing for each stage (STT, LLM, total) is logged at INFO level on every request.
+
+---
+
+# Colour vision
+
+## Detection pipeline
+
+The vision system uses **OpenCV** on a still image captured with `rpicam-still`.
+Each candy is photographed individually as it reaches the camera window in the
+rotating tray.
+
+```
+rpicam-still capture
+  │
+  ├── resize to max 700 px wide (normalise scale)
+  ├── convert BGR → HSV
+  ├── threshold on saturation + value  →  binary mask
+  ├── morphological open + close       →  remove noise
+  ├── find external contours
+  ├── select best Skittle contour:
+  │     area between 150 px² and 10 % of frame
+  │     circularity ≥ 0.45
+  │     aspect ratio  0.55 – 1.45
+  │     does not touch frame border (5 px margin)
+  │     scored by  area × circularity × (1 − distance_from_centre)
+  ├── mask pixels inside the contour with s ≥ 80
+  └── median H, S, V  →  classify_color_hsv()
+```
+
+The two-consecutive-frames confirmation rule (in `reload_controller`) prevents a
+single blurry capture from triggering a wrong bin assignment.
+
+## HSV classification rules
+
+OpenCV uses H ∈ [0, 179]. The classifier maps median hue to colour:
+
+| Hue range | Colour |
+|-----------|--------|
+| < 10 or ≥ 170 | red |
+| 10 – 23 | orange |
+| 24 – 39 | yellow |
+| 40 – 84 | green |
+| 130 – 159 | purple / lila |
+
+Pixels with V < 45 are discarded as shadow. Pixels with S < 45 and V > 150 are
+classified as white/grey (background) and also discarded.
+
+## ML model (alternative)
+
+`BotSoftware/VC/color_model.pkl` is a trained scikit-learn classifier
+(trained with `HW tests/entrenar_modelo.py` from a dataset captured with
+`HW tests/capturar_dataset.py`). The HSV rule-based approach is the default;
+the ML model can be swapped in via `vision_controller` if rule accuracy is
+insufficient under a given lighting setup.
+
+---
+
+# Dispensing flow
+
+When the command action is `"dispense"`:
+
+```
+candy_controller.dispense(items)
+  │
+  ├── guard: items list empty?  →  display.empty_command()
+  ├── check_availability(items) against SQLite stock
+  │     not ok  →  display.low_stock(color, available)  →  return
+  │
+  └── for each item:
+        display.dispensing(color, qty)
+        servo_controller.dispense(color, qty)   # SG90 pulses
+        (loop qty times, one candy per pulse)
+  │
+  └── consume_from_command(items)   →  update SQLite
+```
+
+`servo_controller.dispense` sends a calibrated angular pulse to the SG90 on the
+matching PCA9685 channel. Each pulse ejects exactly one Skittle from its cylinder.
+The number of pulses equals the requested quantity.
+
+---
+
+# Reload / self-sorting flow
+
+When the command action is `"reload"`, the robot enters the self-sorting routine.
+A background thread simultaneously listens for a voice `"cancel"` command so the
+user can stop the reload early by turning the crank and saying "para".
+
+```
+reload_with_voice_cancel()
+  │
+  ├── spawn listener thread:
+  │     while not cancelled and not done:
+  │         if crank.is_turning():
+  │             record → API → if action=="cancel": set cancel_event
+  │
+  └── reload_once(should_cancel=cancel_event.is_set)
+        │
+        ├── vision_controller.start()   (open camera)
+        ├── servo_controller.disk_start()   (continuous servo)
+        │
+        ├── loop:
+        │     detect_color() → color
+        │     require two consecutive same-colour frames (anti-flicker)
+        │     if confirmed and armed:
+        │         sleep DISK_RAMP_DELAY_S   (candy travels to ramp)
+        │         servo_controller.ramp_to(color)
+        │         candy_stock.add_candy(color, 1)
+        │         display.reloading(stock, color)
+        │         armed = False
+        │     if no candy for DISK_REARM_S  →  armed = True
+        │     if no candy for DISK_EMPTY_TIMEOUT_S  →  break (tray empty)
+        │     sleep CAMERA_INTERVAL_S
+        │
+        └── disk_stop() · ramp_center() · vision_controller.release()
+```
+
+All timing constants (`DISK_RAMP_DELAY_S`, `DISK_REARM_S`, `DISK_EMPTY_TIMEOUT_S`,
+`CAMERA_INTERVAL_S`) are defined in `BotSoftware/config/servo_config.py` so they
+can be tuned without touching controller logic.
+
+---
+
+# Stock management
+
+Stock is persisted in a **SQLite database** (`BotSoftware/candy_stock.db`).
+The schema is a single table:
+
+```sql
+CREATE TABLE stock (
+    color    TEXT PRIMARY KEY,
+    quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0)
+);
+```
+
+Five rows are seeded on first use (red, orange, yellow, green, purple).
+The public API exposed by `BotSoftware/models/candy_stock.py`:
+
+| Function | Description |
+|----------|-------------|
+| `get_stock(color=None)` | Return quantity for one colour, or a dict of all five |
+| `add_candy(color, qty)` | Increment stock (called by reload loop) |
+| `remove_candy(color, qty)` | Decrement stock (called after dispensing) |
+| `set_stock(color, qty)` | Overwrite a single colour (calibration / tests) |
+| `set_all(qty)` | Set every colour to the same value |
+| `reset()` | Empty all stock (every colour → 0) |
+| `check_availability(items)` | Return `{ok, missing}` before dispensing |
+| `consume_from_command(items)` | Atomic check-and-remove for a full command |
+
+The `CHECK (quantity >= 0)` constraint in SQLite means stock can never go
+negative at the database level, even if a software bug skips the availability
+check.
+
+---
+
+# Repository layout
+
+```
+CandyBot/
+│
+├── BotSoftware/                Code that runs on the Raspberry Pi
+│   ├── main.py                 Entry point — the main loop
+│   ├── candy_stock.db          SQLite stock database (created on first run)
+│   ├── config/
+│   │   └── servo_config.py     I2C addresses, GPIO pins, timing constants
+│   ├── controllers/
+│   │   ├── candy_controller.py   Dispense flow
+│   │   ├── crank_controller.py   Reed switch input
+│   │   ├── display_controller.py LCD states
+│   │   ├── reload_controller.py  Self-sorting flow
+│   │   ├── servo_controller.py   PCA9685 / SG90 driver
+│   │   └── vision_controller.py  Camera capture + colour classification
+│   ├── models/
+│   │   └── candy_stock.py        SQLite stock access layer
+│   ├── services/
+│   │   └── api_client.py         Audio recording + HTTP post to API
+│   └── VC/                       Vision development utilities
+│       ├── detectar_colors.py    HSV rule-based classifier (standalone)
+│       ├── detectar_colors_rpicam.py   Same, using rpicam-still
+│       ├── color_model.pkl       Trained ML classifier (alternative)
+│       ├── capturar_dataset.py   (in HW tests) Dataset capture script
+│       └── entrenar_modelo.py    (in HW tests) Model training script
+│
+├── Api/                        Cloud service (FastAPI + Docker)
+│   ├── main.py                 FastAPI app, /v1/command endpoint
+│   ├── config.py               Settings via environment variables
+│   ├── models.py               Pydantic response schema
+│   ├── Dockerfile              Container definition
+│   ├── pyproject.toml          Poetry dependencies
+│   └── services/
+│       ├── llm_client.py       Vertex AI / Gemini 2.5 Flash client
+│       ├── speech_to_text.py   Google STT v2 client
+│       ├── parse_and_validate.py   JSON parse + pydantic validation
+│       ├── prompt_loader.py    Load system prompt from file
+│       └── system_prompt.txt   LLM system prompt
+│
+├── HW tests/                   Standalone hardware verification scripts
+│   ├── test_palanca.py         Crank / reed switch
+│   ├── test_ordenar.py         Full sorting cycle (tray + camera + ramp)
+│   ├── test_pantalla.py        LCD display
+│   ├── control_servo_basic.py  Raw servo movement
+│   ├── control_pantallaLCD_basic.py  Raw LCD output
+│   ├── capturar_dataset.py     Capture labelled images for ML training
+│   ├── entrenar_modelo.py      Train and save color_model.pkl
+│   ├── speech_to_text.py       Microphone + STT smoke test
+│   └── debug_pass.py           Miscellaneous debug helpers
+│
+└── 3D Models/                  Printable parts (.stl) — being finalised
+```
+
+---
+
+# Hardware
+
+## Bill of materials
+
+| Qty | Part | Role |
+|-----|------|------|
+| 1 | Raspberry Pi 4 (4 GB) | Central controller |
+| 1 | Raspberry Pi Camera Module v2 | Colour detection |
+| 1 | PCA9685 16-ch PWM driver (I2C) | Servo bus |
+| 5 | SG90 servo | Candy dispensers (one per colour) |
+| 1 | SG90 servo | Directional ramp |
+| 1 | Continuous-rotation servo (360°) | Sorting tray disk |
+| 1 | 16×2 character LCD + PCF8574 I2C backpack | User feedback |
+| 1 | USB sound card + electret microphone | Voice input |
+| 1 | Reed switch + neodymium magnet | Crank activity detection |
+| — | 5 V power supply (≥ 3 A) | Servo rail |
+
+## Servo channel map
+
+| PCA9685 channel | Servo | Colour |
+|-----------------|-------|--------|
+| 0 | Dispenser | green |
+| 1 | Dispenser | purple |
+| 2 | Dispenser | red |
+| 3 | Dispenser | orange |
+| 4 | Dispenser | yellow |
+| 5 | Ramp | — |
+| 6 | Sorting disk | — |
+
+Channels 5 and 6 are assigned during assembly and may differ per build.
+Verify against `BotSoftware/config/servo_config.py` before first run.
+
+## Wiring defaults
+
+| Component | Default address / pin |
+|-----------|-----------------------|
+| PCA9685 | I2C `0x40` |
+| LCD | I2C `0x3F` |
+| Reed switch | GPIO 17 (BCM) |
+| Microphone | ALSA `plughw:1,0` |
+| Camera | Pi camera port (CSI), via `rpicam-still` |
+
+Find your microphone device with `arecord -l`. Update `servo_config.py` if your
+I2C addresses differ (use `i2cdetect -y 1` to scan the bus).
+
+---
+
+# The API
+
+## Endpoint reference
+
+### `GET /health`
+
+Health check. Returns `{"status": "ok", "service": "CandyBot API"}`. No authentication required.
+
+### `POST /v1/command`
+
+Convert a voice clip to a structured candy command.
+
+**Authentication:** `X-API-Token: <token>` header (required).
+
+**Request body:** `multipart/form-data`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `audio` | file | WAV audio clip. Content-Type must start with `audio/`. Max size controlled by `MAX_AUDIO_BYTES` env var. |
+
+**Response** `200 OK`:
 
 ```json
-{ "action": "dispense", "confidence": 0.95, "items": [ { "color": "red", "quantity": 2 } ] }
+{
+  "action":     "dispense",
+  "confidence": 0.95,
+  "items": [
+    { "color": "red",    "quantity": 2 },
+    { "color": "yellow", "quantity": 1 }
+  ]
+}
 ```
 
-Requests are authenticated with a shared token in the `X-API-Token` header.
+| Field | Type | Values |
+|-------|------|--------|
+| `action` | string | `dispense` · `reload` · `cancel` · `nothing` |
+| `confidence` | float | 0.0 – 1.0, LLM self-reported |
+| `items` | array | Only present when `action == "dispense"` |
 
-To run the service you need a Google Cloud project with Speech-to-Text and Vertex AI
-enabled, and credentials available to it. It is configured through environment
-variables: `GCP_PROJECT`, `GCP_LOCATION` (default `europe-west1`) and `API_TOKEN`.
-The service is containerised (`Api/Dockerfile`) and its dependencies are managed with
-Poetry (`Api/pyproject.toml`).
+**Error responses:**
 
-## Running the robot
+| Status | Cause |
+|--------|-------|
+| 400 | Invalid content-type, empty file, or file too large |
+| 401 | Missing or invalid `X-API-Token` |
+| 422 | LLM returned a response that failed schema validation |
+| 502 | Upstream STT or LLM request failed |
 
-The Pi side is meant to be simple: set two values and run one command.
+## LLM prompt design
 
-You need a Raspberry Pi with Python 3, the hardware connected, and the Python
-packages it relies on (`requests`, `python-dotenv`, `gpiozero`, `adafruit-servokit`,
-`RPLCD`, and OpenCV for the camera). `arecord` and `rpicam-still` come with
-Raspberry Pi OS.
+The system prompt (`Api/services/system_prompt.txt`) instructs Gemini to:
 
-Create a `.env` file inside `BotSoftware/` with the address of your deployed API and
-the matching token:
+- Output **only valid JSON**, matching the `CandyBotResponse` schema.
+- Map colour names from Catalan and Spanish to the canonical English set
+  (`red`, `orange`, `yellow`, `green`, `purple`).
+- Set `action = "nothing"` when the intent is unclear or unrelated.
+- Set `action = "cancel"` when the user explicitly wants to stop.
+- Report a `confidence` value reflecting certainty about the parsed intent.
 
+The LLM is called with `response_mime_type: "application/json"` so that
+Gemini returns structured output natively, reducing parse failures.
+
+## Deployment
+
+The API is containerised and tested to run on **Google Cloud Run** (minimum
+512 MB memory; the STT and Vertex AI clients add no in-process weight beyond
+the Python SDK).
+
+**Environment variables:**
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `GCP_PROJECT` | yes | — | Google Cloud project ID |
+| `GCP_LOCATION` | no | `europe-west1` | Region for Vertex AI |
+| `API_TOKEN` | yes | — | Shared secret for authentication |
+| `MAX_AUDIO_BYTES` | no | `10485760` | Max upload size (10 MB) |
+| `LLM_MODEL` | no | `gemini-2.5-flash` | Vertex AI model name |
+
+**Required Google Cloud APIs:** Speech-to-Text v2, Vertex AI.
+
+Build and run locally:
+
+```bash
+cd Api
+docker build -t candybot-api .
+docker run -p 8080:8080 \
+  -e GCP_PROJECT=my-project \
+  -e GCP_LOCATION=europe-west1 \
+  -e API_TOKEN=mysecret \
+  candybot-api
 ```
+
+---
+
+# Running the robot
+
+## Requirements
+
+- Raspberry Pi running **Raspberry Pi OS** (Bookworm or later), Python 3.11+
+- Hardware connected and verified (see [Hardware](#hardware))
+- Python packages:
+
+  ```
+  requests
+  python-dotenv
+  gpiozero
+  adafruit-servokit
+  RPLCD
+  opencv-python
+  ```
+
+- System tools (pre-installed on Raspberry Pi OS):
+
+  ```
+  arecord      # ALSA audio recording
+  rpicam-still # Pi camera capture
+  ```
+
+Install Python dependencies:
+
+```bash
+pip install requests python-dotenv gpiozero adafruit-servokit RPLCD opencv-python
+```
+
+## Configuration
+
+Create a `.env` file inside `BotSoftware/`:
+
+```env
 API_URL=https://<your-cloud-run-url>/v1/command
 API_TOKEN=<the same token configured in the API>
 ```
 
-Then start the robot:
+Review `BotSoftware/config/servo_config.py` and verify that I2C addresses,
+GPIO pin, microphone device, and servo channels match your build before
+the first run.
 
-```
+## Start
+
+```bash
 python -m BotSoftware.main
 ```
 
-This runs the main loop: turn the crank, speak, and the robot serves or refills.
+The robot enters idle state, waits for crank input, then loops indefinitely.
 
-Before a full run, each subsystem can be checked on its own:
+## Testing subsystems individually
 
+Before a full run it is recommended to verify each subsystem in isolation:
+
+```bash
+# Crank / reed switch
+python "HW tests/test_palanca.py"
+
+# LCD display
+python "HW tests/test_pantalla.py"
+
+# Sorting cycle: tray motor, camera, ramp
+python "HW tests/test_ordenar.py"
+
+# Dispense one candy of each colour
+python -m BotSoftware.controllers.servo_controller
+
+# Microphone + speech-to-text smoke test
+python "HW tests/speech_to_text.py"
+
+# Raw servo movement
+python "HW tests/control_servo_basic.py"
 ```
-python "HW tests/test_palanca.py"                    # crank / reed switch
-python "HW tests/test_ordenar.py"                    # sorting: tray, camera, ramp
-python -m BotSoftware.controllers.servo_controller   # dispense one of each colour
-```
 
-If a piece of hardware is missing, the matching module prints a "no hardware" notice
-and keeps running in a safe simulation mode, so the software can be developed and
-tested away from the robot.
+## Developing without hardware
 
-## Team
+Every controller guards its hardware import with a try/except. If a component
+(PCA9685, LCD, camera, GPIO) is not found, the controller prints a `[NO HW]`
+notice and continues in **simulation mode** — methods become no-ops or return
+dummy values. This means the full software stack can be run and tested on any
+machine, even without a Raspberry Pi attached.
 
-See [Roles.md](Roles.md).
+---
+
+# Team
+
+Developed at the Robotics Lab (RLP), Universitat Autònoma de Barcelona.
+
+| Role | Name |
+|------|------|
+| Software Lead | Pol Montesó Tarrida |
+| Hardware Lead | Xavi Umbert Medina |
+| 3D Parts & Mechanical Lead / Product Owner | Lluc Bertran Canicio |
+| Testing & Validation Lead | Matheus Henrique Mingorance Maciel |
+| Vision Lead | Matheus Henrique Mingorance Maciel |
+
+See [Roles.md](Roles.md) for full role descriptions.
+
+---
+
+# License
+
+MIT
